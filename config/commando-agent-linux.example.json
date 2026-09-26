@@ -1,0 +1,23 @@
+{
+  "serverUrl": "https://replace-with-competition-server.example:5080",
+  "enrollmentKey": "replace-with-this-hosts-derived-enrollment-key",
+  "agentName": "Geonosis",
+  "pollSeconds": 5,
+  "taskTimeoutSeconds": 90,
+  "allowInsecureLoopback": false,
+  "statePath": "commando-agent-state.json",
+  "recoveryPath": "commando-agent-recovery.json",
+  "allowedHashRoots": ["/var/log"],
+  "transcriptDirectory": "transcripts",
+  "powerShellExecutable": "powershell.exe",
+  "maxPowerShellOutputBytes": 131072,
+  "enabledPowerShellCommands": [],
+  "allowedTargets": [
+    "10.110.10.11", "10.110.10.12", "10.110.10.13", "10.110.10.14", "10.110.10.15",
+    "10.110.20.11", "10.110.20.12", "10.110.20.13", "10.110.20.14", "10.110.20.15"
+  ],
+  "allowedCidrs": [],
+  "services": [
+    { "id": "apache", "serviceName": "apache2", "tcpPort": 80, "allowPause": true }
+  ]
+}

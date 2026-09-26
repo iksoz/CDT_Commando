@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Commando</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">COMPETITION-SCOPED OPERATIONS</span>
+      <h1>Commando</h1>
+    </div>
+    <div class="header-controls">
+      <div id="serverStatus" class="pill">Connecting…</div>
+      <button id="pauseButton" class="secondary">Pause all</button>
+      <button id="resumeButton" class="secondary" hidden>Resume</button>
+      <button id="emergencyStopButton" class="danger">Emergency stop all</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="auth card">
+      <label for="operatorKey">Operator key</label>
+      <div class="row">
+        <input id="operatorKey" type="password" autocomplete="off" placeholder="Enter the event operator key">
+        <button id="connectButton">Connect</button>
+      </div>
+      <p>The key is held only in this browser tab.</p>
+    </section>
+
+    <section class="layout">
+      <aside class="card">
+        <div class="section-title">
+          <h2>Agent sessions</h2>
+          <button id="refreshButton" class="secondary">Refresh</button>
+        </div>
+        <div id="agents" class="agent-list empty">Connect to load agents.</div>
+      </aside>
+
+      <section class="card workspace">
+        <div id="emptyState" class="empty-state">
+          <h2>Select a session</h2>
+          <p>Assessment tasks and results will appear here.</p>
+        </div>
+
+        <div id="agentWorkspace" hidden>
+          <div class="section-title">
+            <div>
+              <span class="eyebrow">ACTIVE SESSION</span>
+              <h2 id="selectedAgentName"></h2>
+              <p id="selectedAgentMeta"></p>
+            </div>
+          </div>
+
+          <h3>Approved actions</h3>
+          <div class="actions">
+            <button data-task="system_info">System info</button>
+            <button data-task="list_processes">Processes</button>
+            <button data-task="list_services">Services</button>
+            <button data-task="network_connections">Connections</button>
+          </div>
+
+          <div class="hash-action">
+            <input id="hashPath" placeholder="Approved local file path to hash">
+            <button id="hashButton">Hash file</button>
+          </div>
+
+          <h3>Scored service</h3>
+          <p class="help">Only services assigned to this host in the event policy can be selected. A pause automatically attempts restoration.</p>
+          <div class="service-action">
+            <select id="serviceId"></select>
+            <button id="serviceStatusButton">Check status</button>
+            <input id="serviceDuration" type="number" min="5" max="60" value="15" aria-label="Pause duration in seconds">
+            <button id="servicePauseButton" class="danger">Pause, then restore</button>
+          </div>
+
+          <div id="powerShellSection">
+            <h3>Restricted PowerShell</h3>
+            <p class="help">Only the compiled read-only commands below can run. Arguments are structured data, never script text.</p>
+            <div class="powershell-action">
+            <select id="powerShellCommand">
+              <option>Get-ComputerInfo</option>
+              <option>Get-Process</option>
+              <option>Get-Service</option>
+              <option>Get-HotFix</option>
+              <option>Get-NetTCPConnection</option>
+              <option>Test-Connection</option>
+            </select>
+            <input id="powerShellArgument" placeholder="No arguments required" disabled>
+            <input id="powerShellCount" type="number" min="1" max="4" value="1" hidden>
+            <button id="powerShellButton">Run approved command</button>
+            </div>
+          </div>
+
+          <div class="danger-zone">
+            <button id="stopButton" class="danger">Stop agent</button>
+            <span>Stops polling without adding persistence or uninstalling software.</span>
+          </div>
+
+          <div class="section-title task-heading">
+            <h3>Task timeline</h3>
+            <span id="autoRefreshState">Auto-refreshing</span>
+          </div>
+          <div id="tasks" class="tasks"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <template id="agentTemplate">
+    <button class="agent-card">
+      <span class="agent-name"></span>
+      <span class="agent-host"></span>
+      <span class="agent-seen"></span>
+    </button>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

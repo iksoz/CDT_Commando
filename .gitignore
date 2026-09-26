@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/data/
+artifacts/
+*.user
+*.suo
+commando-agent-state.json
+commando-agent.local.json
+transcripts/
+tmp/
+commando-agent-recovery.json
+.vs/
+.idea/

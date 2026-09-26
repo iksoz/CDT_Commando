@@ -1,0 +1,18 @@
+{
+  "startsUtc": "2026-09-28T12:00:00Z",
+  "expiresUtc": "2026-09-28T20:00:00Z",
+  "requireSourceIp": true,
+  "allowedNetworks": ["10.110.10.0/24", "10.110.20.0/24"],
+  "hosts": [
+    { "name": "Geonosis", "hostname": "Geonosis", "address": "10.110.10.11", "osFamily": "Linux", "allowedServiceIds": ["apache"] },
+    { "name": "Mandalore", "hostname": "Mandalore", "address": "10.110.10.12", "osFamily": "Linux", "allowedServiceIds": ["ssh"] },
+    { "name": "Kashyyyk", "hostname": "Kashyyyk", "address": "10.110.10.13", "osFamily": "Linux", "allowedServiceIds": ["mariadb"] },
+    { "name": "Utapau", "hostname": "Utapau", "address": "10.110.10.14", "osFamily": "Linux", "allowedServiceIds": ["ftp"] },
+    { "name": "Mustafar", "hostname": "Mustafar", "address": "10.110.10.15", "osFamily": "Linux", "allowedServiceIds": ["smtp"] },
+    { "name": "Coruscant", "hostname": "Coruscant", "address": "10.110.20.11", "osFamily": "Windows", "allowedServiceIds": ["ad", "dns"] },
+    { "name": "Naboo", "hostname": "Naboo", "address": "10.110.20.12", "osFamily": "Windows", "allowedServiceIds": ["iis"] },
+    { "name": "Kamino", "hostname": "Kamino", "address": "10.110.20.13", "osFamily": "Windows", "allowedServiceIds": ["ca"] },
+    { "name": "Felucia", "hostname": "Felucia", "address": "10.110.20.14", "osFamily": "Windows", "allowedServiceIds": ["smb"] },
+    { "name": "Alderaan", "hostname": "Alderaan", "address": "10.110.20.15", "osFamily": "Windows", "allowedServiceIds": ["mssql"] }
+  ]
+}
