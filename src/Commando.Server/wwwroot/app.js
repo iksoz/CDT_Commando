@@ -76,6 +76,7 @@ async function selectAgent(id) {
   $('#selectedAgentName').textContent = agent.name;
   $('#selectedAgentMeta').textContent = `${agent.hostname} · ${agent.osDescription} · ${agent.architecture} · ${agent.remoteAddress}`;
   $('#powerShellSection').hidden = agent.osFamily !== 'Windows';
+  $('#powerShellScriptSection').hidden = agent.osFamily !== 'Windows' || !agent.allowUnrestrictedPowerShell;
   const serviceSelect = $('#serviceId');
   serviceSelect.replaceChildren();
   for (const id of agent.allowedServiceIds) {
@@ -185,6 +186,15 @@ $('#powerShellButton').addEventListener('click', () => {
   if (definition.key && value) arguments[definition.key] = value;
   if (definition.count) arguments.count = Number($('#powerShellCount').value || 1);
   queueTask('powershell_readonly', { command, arguments });
+});
+
+$('#powerShellScriptButton').addEventListener('click', () => {
+  const script = $('#powerShellScript').value;
+  if (!script.trim() || script.length > 10000)
+    return notify('Enter a script of at most 10,000 characters.', true);
+  const agent = state.agents.find((item) => item.id === state.selectedAgentId);
+  if (confirm(`Run this unrestricted PowerShell script as the agent account on ${agent.hostname}?`))
+    queueTask('powershell_script', { script });
 });
 
 $('#emergencyStopButton').addEventListener('click', async () => {

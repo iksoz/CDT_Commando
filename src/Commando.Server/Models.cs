@@ -23,6 +23,7 @@ public sealed class StoredAgent
     public string OsFamily { get; set; } = string.Empty;
     public string HostPolicyName { get; set; } = string.Empty;
     public List<string> AllowedServiceIds { get; set; } = [];
+    public bool AllowUnrestrictedPowerShell { get; set; }
     public string RemoteAddress { get; set; } = string.Empty;
     public DateTimeOffset RegisteredUtc { get; set; }
     public DateTimeOffset LastSeenUtc { get; set; }
@@ -30,7 +31,7 @@ public sealed class StoredAgent
 
     public AgentSummary ToSummary() => new(
         Id, Name, Hostname, UserName, OsDescription, Architecture, RemoteAddress,
-        RegisteredUtc, LastSeenUtc, Status, OsFamily, AllowedServiceIds);
+        RegisteredUtc, LastSeenUtc, Status, OsFamily, AllowedServiceIds, AllowUnrestrictedPowerShell);
 }
 
 public sealed class StoredTask

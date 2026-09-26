@@ -43,6 +43,7 @@ public sealed class TaskExecutor
                 TaskKinds.NetworkConnections => new ExecutionResult(true, GetNetworkConnections(), null),
                 TaskKinds.HashFile => new ExecutionResult(true, await HashFileAsync(task.ParametersJson, cancellationToken), null),
                 TaskKinds.RestrictedPowerShell => await ExecutePowerShellAsync(task, cancellationToken),
+                TaskKinds.PowerShellScript => await ExecutePowerShellScriptAsync(task, cancellationToken),
                 TaskKinds.ServiceStatus => new ExecutionResult(true, await _services.GetStatusAsync(task.ParametersJson, cancellationToken), null),
                 TaskKinds.ServicePause => new ExecutionResult(true, await _services.PauseAsync(task.ParametersJson, cancellationToken), null),
                 TaskKinds.StopAgent => new ExecutionResult(true, new { message = "Agent stop acknowledged." }, null, true),
@@ -66,6 +67,16 @@ public sealed class TaskExecutor
         var output = await _powerShell.ExecuteAsync(task.Id, task.ParametersJson, cancellationToken);
         var success = !output.TimedOut && output.ExitCode == 0;
         var error = success ? null : output.TimedOut ? "PowerShell task timed out." : output.StandardError;
+        return new ExecutionResult(success, output, error);
+    }
+
+    private async Task<ExecutionResult> ExecutePowerShellScriptAsync(TaskEnvelope task, CancellationToken cancellationToken)
+    {
+        if (_powerShell is null)
+            return new ExecutionResult(false, null, "PowerShell script tasks require Windows.");
+        var output = await _powerShell.ExecuteScriptAsync(task.Id, task.ParametersJson, cancellationToken);
+        var success = !output.TimedOut && output.ExitCode == 0;
+        var error = success ? null : output.TimedOut ? "PowerShell script timed out or was cancelled." : output.StandardError;
         return new ExecutionResult(success, output, error);
     }
 

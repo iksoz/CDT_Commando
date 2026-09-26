@@ -13,6 +13,7 @@
   "transcriptDirectory": "transcripts",
   "powerShellExecutable": "powershell.exe",
   "maxPowerShellOutputBytes": 131072,
+  "allowUnrestrictedPowerShell": true,
   "enabledPowerShellCommands": [
     "Get-ComputerInfo",
     "Get-Process",

@@ -10,6 +10,7 @@ public static class TaskKinds
     public const string NetworkConnections = "network_connections";
     public const string HashFile = "hash_file";
     public const string RestrictedPowerShell = "powershell_readonly";
+    public const string PowerShellScript = "powershell_script";
     public const string ServiceStatus = "service_status";
     public const string ServicePause = "service_pause";
     public const string StopAgent = "stop_agent";
@@ -22,6 +23,7 @@ public static class TaskKinds
         NetworkConnections,
         HashFile,
         RestrictedPowerShell,
+        PowerShellScript,
         ServiceStatus,
         ServicePause,
         StopAgent
@@ -80,7 +82,8 @@ public sealed record AgentSummary(
     DateTimeOffset LastSeenUtc,
     string Status,
     string OsFamily,
-    IReadOnlyList<string> AllowedServiceIds);
+    IReadOnlyList<string> AllowedServiceIds,
+    bool AllowUnrestrictedPowerShell);
 
 public sealed record QueueTaskRequest(string Kind, JsonElement Parameters);
 

@@ -47,6 +47,7 @@ public sealed class StateStore
                 OsFamily = host.OsFamily,
                 HostPolicyName = host.Name,
                 AllowedServiceIds = host.AllowedServiceIds.ToList(),
+                AllowUnrestrictedPowerShell = host.AllowUnrestrictedPowerShell,
                 Architecture = Limit(request.Architecture, 50),
                 AgentVersion = Limit(request.AgentVersion, 50),
                 RemoteAddress = Limit(remoteAddress, 100),
@@ -241,7 +242,9 @@ public sealed class StateStore
 
             var host = _policy.FindHost(agent.HostPolicyName);
             if (host is null || (request.Kind == TaskKinds.ServiceStatus || request.Kind == TaskKinds.ServicePause) &&
-                !ServiceTaskParameters.IsAllowed(request.Parameters, host.AllowedServiceIds, request.Kind))
+                !ServiceTaskParameters.IsAllowed(request.Parameters, host.AllowedServiceIds, request.Kind) ||
+                request.Kind == TaskKinds.PowerShellScript &&
+                (host.OsFamily != "Windows" || !host.AllowUnrestrictedPowerShell))
                 return null;
 
             var task = new StoredTask

@@ -73,6 +73,7 @@ public sealed class CompetitionPolicy
                 address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
                 !networks.Any(network => network.Contains(address)) ||
                 host.OsFamily is not ("Windows" or "Linux") ||
+                host.AllowUnrestrictedPowerShell && host.OsFamily != "Windows" ||
                 !names.Add(host.Name) || !hostnames.Add(host.Hostname) || !addresses.Add(host.Address) ||
                 host.AllowedServiceIds.Any(id => string.IsNullOrWhiteSpace(id)) ||
                 host.AllowedServiceIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != host.AllowedServiceIds.Count)
@@ -90,6 +91,7 @@ public sealed class CompetitionHost
     public string Address { get; set; } = string.Empty;
     public string OsFamily { get; set; } = string.Empty;
     public List<string> AllowedServiceIds { get; set; } = [];
+    public bool AllowUnrestrictedPowerShell { get; set; }
 }
 
 public readonly record struct ScopeNetwork(IPAddress Address, int PrefixLength)

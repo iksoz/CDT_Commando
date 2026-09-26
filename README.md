@@ -2,13 +2,7 @@
 
 Commando is a competition-scoped operations controller. It gives an authorized operator a browser console and lets Windows or Linux agents receive signed, allowlisted tasks. Its event policy names the permitted hosts, service IDs, and start/end times.
 
-It does not provide initial access, arbitrary shell execution, credential collection, autonomous propagation, hidden persistence, or defense disabling. Service pauses are explicit, bounded, and followed by an automatic restoration attempt.
-
-## Current status
-
-The Windows server and Windows/Linux agents have been published as self-contained releases under `artifacts/release/`. The published Windows server and agent passed the local smoke test in both direct-IP and NAT-policy modes. That test covers scoped enrollment, pause/resume, signed tasks, service status, local denial of unapproved service actions, invalid-input rejection, and emergency stop. It does **not** stop a real service.
-
-The Linux agent was cross-published but has not been run on Ubuntu here. Neither the Linux runtime behavior nor a real service stop/restart and recovery cycle has been validated on a competition host. Complete the rehearsal in [Competition deployment](#competition-deployment) before enabling service pauses during the event.
+It does not provide initial access, credential collection, autonomous propagation, hidden persistence, or defense disabling. On individually opted-in Windows hosts, an authorized operator can run unrestricted PowerShell. Service pauses are explicit, bounded, and followed by an automatic restoration attempt.
 
 ## Included
 
@@ -18,7 +12,8 @@ The Linux agent was cross-published but has not been run on Ubuntu here. Neither
 - HMAC-signed tasks with short expiry
 - Persistent server audit log and task timeline
 - Restricted read-only PowerShell execution with structured arguments
-- Per-agent command, hostname/IP, and CIDR scope enforcement
+- Opt-in unrestricted PowerShell execution on Windows agents
+- Per-agent command and target scope enforcement for restricted PowerShell commands
 - Local JSON PowerShell transcripts with SHA-256 hashes
 - Clean per-agent stop and persisted server-wide emergency shutdown
 - Persisted pause/resume that cancels queued work and interrupts an active task at its next control check
@@ -46,7 +41,7 @@ Commando.Server
 Commando.Agent on an authorized Windows or Linux competition host
 ```
 
-The agent performs only locally configured inventory and service actions. It does not scan for, exploit, or install itself on other machines.
+The agent performs locally configured actions. The unrestricted PowerShell option can execute arbitrary commands with the agent account's privileges; scripts are not confined by the restricted command target list.
 
 ## Requirements
 
@@ -73,28 +68,9 @@ dotnet publish .\src\Commando.Agent\Commando.Agent.csproj -c Release -r linux-x6
 
 The resulting executables are `artifacts/release/server-win-x64/Commando.Server.exe`, `artifacts/release/agent-win-x64/Commando.Agent.exe`, and `artifacts/release/agent-linux-x64/Commando.Agent`. The agent publish directories also contain example configuration files. Publishing is not the same as configuring or installing agents on event hosts.
 
-## Local demonstration
-
-Build both projects, then run `./scripts/SmokeTest.ps1` in PowerShell. Add `-UseRelease` to test the published Windows executables and `-UseNatPolicy` to exercise enrollment when the policy permits NAT. The script creates a temporary policy, launches the server, enrolls an agent, verifies scope and pause behavior, runs signed inventory and service-status tasks, and stops the test server. Test data stays under ignored `tmp/`. It never pauses a real service.
-
-```powershell
-.\scripts\SmokeTest.ps1 -UseRelease
-.\scripts\SmokeTest.ps1 -UseRelease -UseNatPolicy
-```
-
-For an interactive demo, create a policy with `127.0.0.1` and your machine's exact hostname, set `COMMANDO_POLICY_FILE` to its path, set separate `COMMANDO_OPERATOR_KEY` and `COMMANDO_ENROLLMENT_KEY` values of at least 16 characters, and start the server on loopback. Derive a host enrollment key as below, using the policy host name. Set the agent's `serverUrl` to loopback, `allowInsecureLoopback` to `true`, and `enrollmentKey` to that derived key. Then run the agent with `--config <path>` and open the server URL in a browser.
-
-```powershell
-$hostName = 'LocalTest'
-$message = "Commando:host:$($hostName.ToLowerInvariant())"
-$hostKey = [Convert]::ToBase64String([Security.Cryptography.HMACSHA256]::HashData(
-    [Text.Encoding]::UTF8.GetBytes($env:COMMANDO_ENROLLMENT_KEY),
-    [Text.Encoding]::UTF8.GetBytes($message)))
-```
-
 ## Restricted PowerShell
 
-On Windows, Commando does not accept PowerShell script text. The operator selects a compiled read-only command and sends structured arguments. The server validates the request, signs the complete task, and binds it to one agent and expiration time. The agent verifies that signature, repeats the command/argument validation, applies its local target scope, and starts PowerShell without profiles or interactive input. Linux agents reject PowerShell tasks.
+In restricted mode, the operator selects a compiled read-only command and sends structured arguments rather than script text. The server validates the request, signs the complete task, and binds it to one agent and expiration time. The agent verifies that signature, repeats the command/argument validation, applies its local target scope, and starts PowerShell without profiles or interactive input. Linux agents reject PowerShell tasks.
 
 The compiled command set is:
 
@@ -110,6 +86,12 @@ Test-Connection    -Target [-Count 1..4]
 `enabledPowerShellCommands` can restrict this set per agent but cannot expand it. `Test-Connection` requires a literal IP in the event host list, and the agent must also allow that IP in `allowedTargets` or `allowedCidrs`. Hostnames are never implicitly resolved to bypass that policy.
 
 Each execution has the configured `taskTimeoutSeconds` limit, capped at 120 seconds. Its command, structured arguments, timing, exit status, standard output, and standard error are written beneath `transcriptDirectory`. The returned result includes the transcript path and SHA-256 hash.
+
+## Unrestricted PowerShell
+
+The `powershell_script` task accepts arbitrary PowerShell text on Windows, without the read-only command allowlist. Both the server's host entry and that host's local agent config must set `allowUnrestrictedPowerShell: true`; it is disabled by default. The dashboard shows the script editor only for Windows hosts opted in by the event policy. Linux agents reject the task.
+
+The script runs under the agent process's Windows account, so its permissions and effects depend on that account. The event policy restricts **which agent** may receive the task and **when**, but does not inspect the script's commands or outbound targets. The operator must keep each script within the competition's authorized scope. Scripts are limited to 10,000 characters to fit Windows' encoded-command transport, and execution uses the agent's task timeout. Cancellation attempts to terminate the PowerShell process tree, but a detached child process or remote action might continue. The server retains the exact queued script; the agent transcript records the script, output, timing, and hashes. Protect those records if scripts contain sensitive data.
 
 ## Service actions
 
@@ -145,10 +127,20 @@ Emergency stop is intentionally one-way for an event state. To begin a new event
 2. Set `COMMANDO_POLICY_FILE` to that file's absolute path. Keep `requireSourceIp: true` when agent traffic reaches the server directly. If a gateway changes the source IP, set it to `false` and distribute only the unique derived key for each named host. Never distribute the master `COMMANDO_ENROLLMENT_KEY` to an agent.
 3. Place the server behind HTTPS or configure Kestrel with a certificate trusted by the agents.
 4. Set `COMMANDO_OPERATOR_KEY` and `COMMANDO_ENROLLMENT_KEY` through the host's secret manager. Restrict `Commando__DataDirectory` to an operator-controlled directory.
-5. Create a separate agent config for each host. Derive its enrollment key using the example above and its policy host name. Set the HTTPS `serverUrl`, `allowInsecureLoopback: false`, `agentName`, local service names/ports, and restricted hash roots. Give each agent its own protected state and recovery paths.
+5. Create a separate agent config for each host. Derive its enrollment key using the policy host name as shown below. Set the HTTPS `serverUrl`, `allowInsecureLoopback: false`, `agentName`, local service names/ports, and restricted hash roots. Give each agent its own protected state and recovery paths. Enable unrestricted PowerShell only on Windows hosts approved for it, in both the policy and local config.
 6. Keep `allowedTargets` to the exact event host IPs and `allowedCidrs` empty unless a broader range is explicitly authorized.
 7. Protect config files, state files, recovery journals, and transcripts with host file permissions. Deploy the agent only through the approved competition access mechanism.
 8. On a cloned Windows Server 2019 and Ubuntu 22.04 host, rehearse enrollment, service status, pause/resume, emergency stop, and an approved service pause. Confirm the service and its scored application check recover both normally and after restarting an interrupted agent. Keep `allowPause: false` until this succeeds for each service.
+
+Derive each host's enrollment key on the server/operator machine. Replace `Naboo` with the exact `name` field for that host in the event policy, then place only the resulting `$hostKey` in that agent's configuration:
+
+```powershell
+$policyHostName = 'Naboo'
+$message = "Commando:host:$($policyHostName.ToLowerInvariant())"
+$hostKey = [Convert]::ToBase64String([Security.Cryptography.HMACSHA256]::HashData(
+    [Text.Encoding]::UTF8.GetBytes($env:COMMANDO_ENROLLMENT_KEY),
+    [Text.Encoding]::UTF8.GetBytes($message)))
+```
 
 Useful server environment settings:
 
@@ -161,22 +153,3 @@ Commando__MaxOutputBytes
 ```
 
 The server refuses to start unless both secrets contain at least 16 characters and a valid policy file with explicit event times is present.
-
-## Operational safety
-
-- Use only on systems explicitly included in written rules of engagement.
-- Treat enrollment keys and agent state files as secrets.
-- Use a separate operator key and enrollment key.
-- Bind the server only to the competition VPN or management network.
-- Remove agents and revoke access after the event.
-- Keep the server's state file for the event audit record.
-
-## Project layout
-
-```text
-src/Commando.Shared   Shared API contracts and task signing
-src/Commando.Server   Task broker, state store, and web console
-src/Commando.Agent    Windows/Linux agent
-config/               Event policy and per-platform agent examples
-scripts/              Local smoke test
-```

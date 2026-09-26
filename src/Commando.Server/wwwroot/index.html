@@ -94,6 +94,14 @@
             </div>
           </div>
 
+          <div id="powerShellScriptSection" hidden>
+            <h3>Unrestricted PowerShell</h3>
+            <p class="help">Runs the script as the agent's Windows account. The script itself is not limited to the event target list; confirm its targets and effects before queuing it. Scripts and output are recorded in the task timeline and agent transcript.</p>
+            <label for="powerShellScript">Script</label>
+            <textarea id="powerShellScript" maxlength="10000" spellcheck="false" placeholder="Enter PowerShell script"></textarea>
+            <button id="powerShellScriptButton" class="danger">Run script</button>
+          </div>
+
           <div class="danger-zone">
             <button id="stopButton" class="danger">Stop agent</button>
             <span>Stops polling without adding persistence or uninstalling software.</span>

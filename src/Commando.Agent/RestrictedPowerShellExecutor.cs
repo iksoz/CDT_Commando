@@ -15,6 +15,16 @@ public sealed record RestrictedPowerShellOutput(
     string TranscriptPath,
     string TranscriptSha256);
 
+public sealed record PowerShellScriptOutput(
+    int ExitCode,
+    bool TimedOut,
+    string StandardOutput,
+    string StandardError,
+    bool OutputTruncated,
+    string ScriptSha256,
+    string TranscriptPath,
+    string TranscriptSha256);
+
 public sealed class RestrictedPowerShellExecutor
 {
     private readonly AgentConfig _config;
@@ -120,6 +130,103 @@ public sealed class RestrictedPowerShellExecutor
             stderr,
             transcriptPath,
             transcriptHash);
+    }
+
+    public async Task<PowerShellScriptOutput> ExecuteScriptAsync(
+        Guid taskId, string parametersJson, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("PowerShell script tasks require Windows.");
+        if (!_config.AllowUnrestrictedPowerShell)
+            throw new UnauthorizedAccessException("Unrestricted PowerShell is disabled by the local agent configuration.");
+
+        using var parameters = JsonDocument.Parse(parametersJson);
+        if (!PowerShellScriptParameters.TryParse(parameters.RootElement, out var script, out var error))
+            throw new UnauthorizedAccessException(error);
+
+        var scriptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(script)));
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = _config.PowerShellExecutable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-EncodedCommand");
+        startInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
+
+        var startedUtc = DateTimeOffset.UtcNow;
+        using var process = new Process { StartInfo = startInfo };
+        if (!process.Start()) throw new InvalidOperationException("PowerShell could not be started.");
+
+        var stdoutTask = ReadLimitedAsync(process.StandardOutput, _config.MaxPowerShellOutputBytes);
+        var stderrTask = ReadLimitedAsync(process.StandardError, _config.MaxPowerShellOutputBytes);
+        var timedOut = false;
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            timedOut = true;
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { /* Process already exited. */ }
+            await process.WaitForExitAsync(CancellationToken.None);
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        var completedUtc = DateTimeOffset.UtcNow;
+        var exitCode = timedOut ? -1 : process.ExitCode;
+        var outputTruncated = stdout.Truncated || stderr.Truncated;
+
+        Directory.CreateDirectory(_config.TranscriptDirectory);
+        var transcriptPath = Path.Combine(
+            _config.TranscriptDirectory, $"{startedUtc:yyyyMMdd-HHmmss}-{taskId:D}.json");
+        var transcript = new
+        {
+            TaskId = taskId,
+            Agent = Environment.MachineName,
+            Script = script,
+            ScriptSha256 = scriptHash,
+            StartedUtc = startedUtc,
+            CompletedUtc = completedUtc,
+            DurationMilliseconds = (long)(completedUtc - startedUtc).TotalMilliseconds,
+            TimedOut = timedOut,
+            ExitCode = exitCode,
+            StandardOutput = stdout.Text,
+            StandardError = stderr.Text,
+            OutputTruncated = outputTruncated
+        };
+        await File.WriteAllTextAsync(transcriptPath, JsonSerializer.Serialize(transcript, _json), CancellationToken.None);
+        await using var transcriptStream = File.OpenRead(transcriptPath);
+        var transcriptHash = Convert.ToHexString(await SHA256.HashDataAsync(transcriptStream, CancellationToken.None));
+
+        return new PowerShellScriptOutput(
+            exitCode, timedOut, stdout.Text, stderr.Text, outputTruncated,
+            scriptHash, transcriptPath, transcriptHash);
+    }
+
+    private static async Task<(string Text, bool Truncated)> ReadLimitedAsync(StreamReader reader, int maximumBytes)
+    {
+        var result = new StringBuilder();
+        var buffer = new char[4096];
+        var truncated = false;
+        while (true)
+        {
+            var count = await reader.ReadAsync(buffer.AsMemory());
+            if (count == 0) break;
+            var remaining = maximumBytes - result.Length;
+            if (remaining > 0) result.Append(buffer, 0, Math.Min(remaining, count));
+            if (count > remaining) truncated = true;
+        }
+        var captured = result.ToString();
+        return (LimitUtf8(captured, maximumBytes),
+            truncated || Encoding.UTF8.GetByteCount(captured) > maximumBytes);
     }
 
     private PowerShellRequest ParseAndValidate(string parametersJson)

@@ -33,6 +33,7 @@ try {
             address = if ($UseNatPolicy) { '10.110.20.12' } else { '127.0.0.1' }
             osFamily = 'Windows'
             allowedServiceIds = @('eventlog')
+            allowUnrestrictedPowerShell = $true
         })
     }
     $policyPath = Join-Path $work 'policy.json'
@@ -50,6 +51,7 @@ try {
         transcriptDirectory = (Join-Path $work 'transcripts')
         powerShellExecutable = 'powershell.exe'
         enabledPowerShellCommands = @()
+        allowUnrestrictedPowerShell = $true
         allowedTargets = @('127.0.0.1')
         allowedCidrs = @()
         services = @(@{ id = 'eventlog'; serviceName = 'EventLog'; tcpPort = 0; allowPause = $false })
@@ -144,11 +146,43 @@ try {
     } catch {
         if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw }
     }
+    try {
+        Invoke-RestMethod "$baseUrl/api/operator/agents/$agentId/tasks" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"kind":"powershell_script","parameters":{"script":""}}' | Out-Null
+        throw 'Empty PowerShell script was accepted.'
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw }
+    }
+    $oversizedScript = @{ kind = 'powershell_script'; parameters = @{ script = ('A' * 10001) } } | ConvertTo-Json -Depth 5
+    try {
+        Invoke-RestMethod "$baseUrl/api/operator/agents/$agentId/tasks" -Method Post -Headers $headers -ContentType 'application/json' -Body $oversizedScript | Out-Null
+        throw 'Oversized PowerShell script was accepted.'
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw }
+    }
+    $scriptTask = @{ kind = 'powershell_script'; parameters = @{ script = "Write-Output 'COMMANDO_SCRIPT_OK'" } } | ConvertTo-Json -Depth 5
+    Invoke-RestMethod "$baseUrl/api/operator/agents/$agentId/tasks" -Method Post -Headers $headers -ContentType 'application/json' -Body $scriptTask | Out-Null
+    Invoke-AgentOnce
+    $tasks = Invoke-RestMethod "$baseUrl/api/operator/tasks?agentId=$agentId" -Headers $headers
+    $scriptResult = $tasks[0].outputJson | ConvertFrom-Json
+    if ($tasks[0].kind -ne 'powershell_script' -or -not $tasks[0].success -or
+        $scriptResult.standardOutput -notmatch 'COMMANDO_SCRIPT_OK' -or
+        -not (Test-Path -LiteralPath $scriptResult.transcriptPath)) {
+        throw 'Expected a completed PowerShell script and transcript.'
+    }
+    $agentConfig.allowUnrestrictedPowerShell = $false
+    $agentConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $agentPath -Encoding utf8
+    Invoke-RestMethod "$baseUrl/api/operator/agents/$agentId/tasks" -Method Post -Headers $headers -ContentType 'application/json' -Body $scriptTask | Out-Null
+    Invoke-AgentOnce
+    $tasks = Invoke-RestMethod "$baseUrl/api/operator/tasks?agentId=$agentId" -Headers $headers
+    if ($tasks[0].kind -ne 'powershell_script' -or $tasks[0].success -or
+        $tasks[0].error -notmatch 'disabled') {
+        throw 'Expected the local agent opt-in to reject the PowerShell script.'
+    }
     Invoke-RestMethod "$baseUrl/api/operator/emergency-stop" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"confirmation":"STOP COMMANDO"}' | Out-Null
     Invoke-AgentOnce
     $status = Invoke-RestMethod "$baseUrl/api/status"
     if ($status.control.state -ne 'emergency_stopped') { throw 'Emergency stop state was not persisted.' }
-    Write-Output 'Smoke test passed: scoped enrollment, pause/resume, signed tasks, service checks, local action denial, invalid-input rejection, and emergency stop.'
+    Write-Output 'Smoke test passed: scoped enrollment, pause/resume, signed tasks, service checks, unrestricted PowerShell and local denial, invalid-input rejection, and emergency stop.'
 }
 finally {
     if ($serverProcess -and -not $serverProcess.HasExited) {

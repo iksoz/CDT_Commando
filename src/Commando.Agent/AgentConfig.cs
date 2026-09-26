@@ -19,6 +19,7 @@ public sealed class AgentConfig
     public string PowerShellExecutable { get; set; } = "powershell.exe";
     public int MaxPowerShellOutputBytes { get; set; } = 131_072;
     public List<string> EnabledPowerShellCommands { get; set; } = [];
+    public bool AllowUnrestrictedPowerShell { get; set; }
     public List<string> AllowedTargets { get; set; } = [];
     public List<string> AllowedCidrs { get; set; } = [];
     public List<LocalService> Services { get; set; } = [];

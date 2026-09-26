@@ -248,6 +248,9 @@ static bool ValidateParameters(QueueTaskRequest request, CompetitionPolicy polic
     if (request.Kind is TaskKinds.ServiceStatus or TaskKinds.ServicePause)
         return ServiceTaskParameters.TryParse(request.Parameters, request.Kind, out _, out error);
 
+    if (request.Kind == TaskKinds.PowerShellScript)
+        return PowerShellScriptParameters.TryParse(request.Parameters, out _, out error);
+
     if (!request.Kind.Equals(TaskKinds.HashFile, StringComparison.OrdinalIgnoreCase))
     {
         return true;

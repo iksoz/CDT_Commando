@@ -30,8 +30,9 @@ p { color: var(--muted); }
 .auth label { display: block; margin-bottom: 8px; font-weight: 700; }
 .auth p { margin: 8px 0 0; font-size: 0.8rem; }
 .row { display: flex; gap: 10px; }
-input, select { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; background: #0b1117; color: var(--text); padding: 0 12px; outline: none; }
-input:focus, select:focus { border-color: var(--accent); }
+input, select, textarea { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; background: #0b1117; color: var(--text); padding: 0 12px; outline: none; }
+textarea { min-height: 160px; padding: 12px; resize: vertical; font: 0.9rem ui-monospace, monospace; margin-bottom: 10px; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 button { border: 1px solid #44b897; border-radius: 8px; background: var(--accent-dark); color: var(--accent); padding: 10px 14px; font-weight: 700; cursor: pointer; }
 button:hover { filter: brightness(1.2); }
 button:disabled { cursor: wait; opacity: 0.55; }
