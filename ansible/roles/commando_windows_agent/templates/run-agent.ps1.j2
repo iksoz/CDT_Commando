@@ -1,0 +1,5 @@
+$ErrorActionPreference = 'Stop'
+$logPath = {{ (commando_windows_agent_log_dir + '\\agent.log') | to_json }}
+& {{ (commando_windows_agent_install_dir + '\\Commando.Agent.exe') | to_json }} `
+  --config {{ (commando_windows_agent_config_dir + '\\agent.json') | to_json }} *>> $logPath
+exit $LASTEXITCODE

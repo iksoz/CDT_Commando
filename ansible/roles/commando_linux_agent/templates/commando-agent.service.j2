@@ -1,0 +1,22 @@
+[Unit]
+Description=Commando competition agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ commando_linux_agent_user }}
+Group={{ commando_linux_agent_group }}
+WorkingDirectory={{ commando_linux_agent_install_dir }}
+ExecStart={{ commando_linux_agent_install_dir }}/Commando.Agent --config {{ commando_linux_agent_config_dir }}/agent.json
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,29 @@
+{
+  "serverUrl": {{ commando_server_url | to_json }},
+  "enrollmentKey": {{ (commando_agent_enrollment_key | default(commando_enrollment_key | commando_host_key(commando_agent_name), true)) | to_json }},
+  "agentName": {{ commando_agent_name | to_json }},
+  "pollSeconds": {{ commando_poll_seconds }},
+  "taskTimeoutSeconds": {{ commando_task_timeout_seconds }},
+  "allowInsecureLoopback": false,
+  "statePath": {{ (commando_linux_agent_state_dir + '/agent-state.json') | to_json }},
+  "recoveryPath": {{ (commando_linux_agent_state_dir + '/recovery.json') | to_json }},
+  "allowedHashRoots": {{ commando_allowed_hash_roots | to_json }},
+  "transcriptDirectory": {{ (commando_linux_agent_log_dir + '/transcripts') | to_json }},
+  "powerShellExecutable": "powershell.exe",
+  "maxPowerShellOutputBytes": {{ commando_max_powershell_output_bytes }},
+  "allowUnrestrictedPowerShell": false,
+  "enabledPowerShellCommands": [],
+  "allowedTargets": {{ commando_allowed_targets | to_json }},
+  "allowedCidrs": {{ commando_allowed_cidrs | to_json }},
+  "services": [
+{% for service in commando_services %}
+    {
+      "id": {{ service.id | to_json }},
+      "serviceName": {{ service.service_name | to_json }},
+      "tcpPort": {{ service.tcp_port | default(0) }},
+      "allowPause": {{ service.allow_pause | default(false) | bool | to_json }}
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
+  ]
+}
+

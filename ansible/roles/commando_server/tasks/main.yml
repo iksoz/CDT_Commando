@@ -1,0 +1,219 @@
+---
+- name: Validate server deployment inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Windows'
+      - commando_operator_key is string
+      - commando_operator_key | length >= 16
+      - commando_enrollment_key is string
+      - commando_enrollment_key | length >= 16
+      - commando_tls_pfx_source is string
+      - commando_tls_pfx_source | length > 0
+      - "(groups.get('linux_agents', []) | length) + (groups.get('windows_agents', []) | length) > 0"
+      - commando_event_starts_utc | length > 0
+      - commando_event_expires_utc | length > 0
+    fail_msg: Check the event, secret, TLS, and inventory variables before deploying Commando.
+  no_log: true
+
+- name: Check server artifact on the controller
+  ansible.builtin.stat:
+    path: "{{ commando_server_artifact_dir }}/Commando.Server.exe"
+  delegate_to: localhost
+  become: false
+  register: commando_server_artifact_stat
+
+- name: Check TLS certificate on the controller
+  ansible.builtin.stat:
+    path: "{{ commando_tls_pfx_source }}"
+  delegate_to: localhost
+  become: false
+  register: commando_tls_pfx_stat
+
+- name: Require server artifact and TLS certificate
+  ansible.builtin.assert:
+    that:
+      - commando_server_artifact_stat.stat.exists
+      - commando_tls_pfx_stat.stat.exists
+    fail_msg: The bundled server artifact or generated PKCS#12 certificate is missing.
+
+- name: Inspect installed server executable
+  ansible.windows.win_stat:
+    path: "{{ commando_server_install_dir }}\\Commando.Server.exe"
+    get_checksum: true
+    checksum_algorithm: sha1
+  register: commando_installed_server_stat
+
+- name: Stop server before replacing its executable
+  ansible.windows.win_powershell:
+    parameters:
+      TaskName: "{{ commando_server_task_name }}"
+      ExecutablePath: "{{ commando_server_install_dir }}\\Commando.Server.exe"
+    script: |
+      param(
+        [string]$TaskName,
+        [string]$ExecutablePath
+      )
+      Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+      Get-CimInstance Win32_Process | Where-Object ExecutablePath -EQ $ExecutablePath |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  when:
+    - commando_installed_server_stat.stat.exists
+    - commando_installed_server_stat.stat.checksum != commando_server_artifact_stat.stat.checksum
+    - not ansible_check_mode
+  changed_when: true
+
+- name: Create server directories
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ commando_server_install_dir }}"
+    - "{{ commando_server_data_dir }}"
+    - "{{ commando_server_config_dir }}"
+    - "{{ commando_server_log_dir }}"
+
+- name: Restrict server data permissions
+  ansible.windows.win_acl:
+    path: "{{ item.path }}"
+    user: "{{ item.user }}"
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit,ObjectInherit
+    propagation: None
+  loop:
+    - path: "{{ commando_server_config_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_server_config_dir }}"
+      user: BUILTIN\Administrators
+    - path: "{{ commando_server_data_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_server_data_dir }}"
+      user: BUILTIN\Administrators
+    - path: "{{ commando_server_log_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_server_log_dir }}"
+      user: BUILTIN\Administrators
+
+- name: Disable inherited permissions on server data
+  ansible.windows.win_acl_inheritance:
+    path: "{{ item }}"
+    state: absent
+    reorganize: false
+  loop:
+    - "{{ commando_server_config_dir }}"
+    - "{{ commando_server_data_dir }}"
+    - "{{ commando_server_log_dir }}"
+
+- name: Copy server release
+  ansible.windows.win_copy:
+    src: "{{ commando_server_artifact_dir }}/"
+    dest: "{{ commando_server_install_dir }}\\"
+  notify: Restart Commando server
+
+- name: Install server TLS certificate file
+  ansible.windows.win_copy:
+    src: "{{ commando_tls_pfx_source }}"
+    dest: "{{ commando_server_config_dir }}\\server.pfx"
+  no_log: true
+  notify: Restart Commando server
+
+- name: Install Commando CA certificate file on the controller
+  ansible.windows.win_copy:
+    src: "{{ commando_tls_ca_source }}"
+    dest: "{{ commando_server_config_dir }}\\commando-ca.cer"
+
+- name: Trust the Commando CA on the Windows controller
+  ansible.windows.win_certificate_store:
+    path: "{{ commando_server_config_dir }}\\commando-ca.cer"
+    store_location: LocalMachine
+    store_name: Root
+    state: present
+
+- name: Render competition policy
+  ansible.windows.win_template:
+    src: event-policy.json.j2
+    dest: "{{ commando_server_config_dir }}\\event-policy.json"
+  notify: Restart Commando server
+
+- name: Render protected server launcher
+  ansible.windows.win_template:
+    src: run-server.ps1.j2
+    dest: "{{ commando_server_config_dir }}\\run-server.ps1"
+  no_log: true
+  notify: Restart Commando server
+
+- name: Create Commando server startup task
+  community.windows.win_scheduled_task:
+    name: "{{ commando_server_task_name }}"
+    description: Starts the Commando competition controller at system boot.
+    actions:
+      - path: "{{ commando_windows_powershell_path }}"
+        arguments: >-
+          -NoProfile -NonInteractive -ExecutionPolicy Bypass
+          -File "{{ commando_server_config_dir }}\run-server.ps1"
+        working_directory: "{{ commando_server_install_dir }}"
+    triggers:
+      - type: boot
+        delay: PT10S
+    username: SYSTEM
+    logon_type: service_account
+    run_level: highest
+    execution_time_limit: PT0S
+    restart_count: 5
+    restart_interval: PT1M
+    multiple_instances: 2
+    enabled: true
+    state: present
+  notify: Restart Commando server
+
+- name: Open the Commando server firewall port
+  community.windows.win_firewall_rule:
+    name: Commando Server HTTPS
+    localport: "{{ commando_server_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    profiles: "{{ commando_server_firewall_profiles }}"
+    state: present
+    enabled: true
+  when: commando_server_open_firewall | bool
+
+- name: Apply server changes before health check
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Commando server startup task is running
+  ansible.windows.win_powershell:
+    parameters:
+      TaskName: "{{ commando_server_task_name }}"
+    script: |
+      param([string]$TaskName)
+      $task = Get-ScheduledTask -TaskName $TaskName
+      if ($task.State -ne 'Running') {
+        Start-ScheduledTask -TaskName $TaskName
+        $Ansible.Changed = $true
+      } else {
+        $Ansible.Changed = $false
+      }
+  when: not ansible_check_mode
+
+- name: Wait for Commando server port
+  ansible.windows.win_wait_for:
+    host: 127.0.0.1
+    port: "{{ commando_server_port }}"
+    state: started
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Verify Commando dashboard responds
+  ansible.windows.win_uri:
+    url: "https://127.0.0.1:{{ commando_server_port }}/"
+    method: GET
+    validate_certs: "{{ commando_server_validate_healthcheck_certificate }}"
+    status_code: 200
+  register: commando_server_healthcheck
+  retries: "{{ commando_server_healthcheck_retries }}"
+  delay: "{{ commando_server_healthcheck_delay }}"
+  until: commando_server_healthcheck.status_code == 200
+  when: not ansible_check_mode
+

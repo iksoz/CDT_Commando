@@ -1,0 +1,203 @@
+---
+- name: Validate Windows agent deployment inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Windows'
+      - commando_agent_name is defined
+      - commando_agent_name | length > 0
+      - commando_server_url is match('^https://')
+    fail_msg: Windows agents require a name and an HTTPS server URL.
+
+- name: Check Windows agent artifact on the controller
+  ansible.builtin.stat:
+    path: "{{ commando_windows_agent_artifact }}"
+  delegate_to: localhost
+  become: false
+  register: commando_windows_agent_artifact_stat
+
+- name: Require Windows agent artifact
+  ansible.builtin.assert:
+    that: commando_windows_agent_artifact_stat.stat.exists
+    fail_msg: The bundled Windows agent artifact is missing.
+
+- name: Check optional TLS CA certificate on the controller
+  ansible.builtin.stat:
+    path: "{{ commando_tls_ca_source }}"
+  delegate_to: localhost
+  become: false
+  register: commando_windows_ca_stat
+  when: commando_tls_ca_source | default('') | length > 0
+
+- name: Require configured TLS CA certificate
+  ansible.builtin.assert:
+    that: commando_windows_ca_stat.stat.exists
+    fail_msg: Set commando_tls_ca_source to an existing CA certificate or to an empty string.
+  when: commando_tls_ca_source | default('') | length > 0
+
+- name: Inspect installed Windows agent executable
+  ansible.windows.win_stat:
+    path: "{{ commando_windows_agent_install_dir }}\\Commando.Agent.exe"
+    get_checksum: true
+    checksum_algorithm: sha1
+  register: commando_installed_windows_agent_stat
+
+- name: Stop Windows agent before replacing its executable
+  ansible.windows.win_powershell:
+    parameters:
+      TaskName: "{{ commando_windows_agent_task_name }}"
+      ExecutablePath: "{{ commando_windows_agent_install_dir }}\\Commando.Agent.exe"
+    script: |
+      param(
+        [string]$TaskName,
+        [string]$ExecutablePath
+      )
+      Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+      Get-CimInstance Win32_Process | Where-Object ExecutablePath -EQ $ExecutablePath |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  when:
+    - commando_installed_windows_agent_stat.stat.exists
+    - commando_installed_windows_agent_stat.stat.checksum != commando_windows_agent_artifact_stat.stat.checksum
+    - not ansible_check_mode
+  changed_when: true
+
+- name: Create Windows agent directories
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ commando_windows_agent_install_dir }}"
+    - "{{ commando_windows_agent_config_dir }}"
+    - "{{ commando_windows_agent_state_dir }}"
+    - "{{ commando_windows_agent_log_dir }}"
+    - "{{ commando_windows_agent_log_dir }}\\transcripts"
+
+- name: Restrict Windows agent data permissions
+  ansible.windows.win_acl:
+    path: "{{ item.path }}"
+    user: "{{ item.user }}"
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit,ObjectInherit
+    propagation: None
+  loop:
+    - path: "{{ commando_windows_agent_config_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_windows_agent_config_dir }}"
+      user: BUILTIN\Administrators
+    - path: "{{ commando_windows_agent_state_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_windows_agent_state_dir }}"
+      user: BUILTIN\Administrators
+    - path: "{{ commando_windows_agent_log_dir }}"
+      user: SYSTEM
+    - path: "{{ commando_windows_agent_log_dir }}"
+      user: BUILTIN\Administrators
+
+- name: Disable inherited Windows agent data permissions
+  ansible.windows.win_acl_inheritance:
+    path: "{{ item }}"
+    state: absent
+    reorganize: false
+  loop:
+    - "{{ commando_windows_agent_config_dir }}"
+    - "{{ commando_windows_agent_state_dir }}"
+    - "{{ commando_windows_agent_log_dir }}"
+
+- name: Install Windows agent binary
+  ansible.windows.win_copy:
+    src: "{{ commando_windows_agent_artifact }}"
+    dest: "{{ commando_windows_agent_install_dir }}\\Commando.Agent.exe"
+  notify: Restart Commando Windows agent
+
+- name: Render protected Windows agent configuration
+  ansible.windows.win_template:
+    src: agent.json.j2
+    dest: "{{ commando_windows_agent_config_dir }}\\agent.json"
+  no_log: true
+  notify: Restart Commando Windows agent
+
+- name: Render Windows agent launcher
+  ansible.windows.win_template:
+    src: run-agent.ps1.j2
+    dest: "{{ commando_windows_agent_config_dir }}\\run-agent.ps1"
+  notify: Restart Commando Windows agent
+
+- name: Copy Commando TLS CA certificate
+  ansible.windows.win_copy:
+    src: "{{ commando_tls_ca_source }}"
+    dest: "{{ commando_windows_agent_config_dir }}\\server-ca.cer"
+  when: commando_tls_ca_source | default('') | length > 0
+
+- name: Trust Commando TLS CA certificate
+  ansible.windows.win_certificate_store:
+    path: "{{ commando_windows_agent_config_dir }}\\server-ca.cer"
+    store_location: LocalMachine
+    store_name: Root
+    state: present
+  when: commando_tls_ca_source | default('') | length > 0
+  notify: Restart Commando Windows agent
+
+- name: Create Commando agent startup task
+  community.windows.win_scheduled_task:
+    name: "{{ commando_windows_agent_task_name }}"
+    description: Starts the authorized Commando competition agent at system boot.
+    actions:
+      - path: "{{ commando_windows_powershell_path }}"
+        arguments: >-
+          -NoProfile -NonInteractive -ExecutionPolicy Bypass
+          -File "{{ commando_windows_agent_config_dir }}\run-agent.ps1"
+        working_directory: "{{ commando_windows_agent_install_dir }}"
+    triggers:
+      - type: boot
+        delay: PT30S
+    username: SYSTEM
+    logon_type: service_account
+    run_level: highest
+    execution_time_limit: PT0S
+    restart_count: 5
+    restart_interval: PT1M
+    multiple_instances: 2
+    enabled: true
+    state: present
+  notify: Restart Commando Windows agent
+
+- name: Apply Windows agent changes before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Commando agent startup task is running
+  ansible.windows.win_powershell:
+    parameters:
+      TaskName: "{{ commando_windows_agent_task_name }}"
+    script: |
+      param([string]$TaskName)
+      $task = Get-ScheduledTask -TaskName $TaskName
+      if ($task.State -ne 'Running') {
+        Start-ScheduledTask -TaskName $TaskName
+        $Ansible.Changed = $true
+      } else {
+        $Ansible.Changed = $false
+      }
+  when: not ansible_check_mode
+
+- name: Read Windows agent task state
+  ansible.windows.win_powershell:
+    script: |
+      $task = Get-ScheduledTask -TaskName {{ commando_windows_agent_task_name | to_json }}
+      $Ansible.Result = @{ state = [string]$task.State }
+  register: commando_windows_agent_status
+  retries: 5
+  delay: 2
+  until: commando_windows_agent_status.result.state == 'Running'
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify Windows agent enrollment state exists
+  ansible.windows.win_stat:
+    path: "{{ commando_windows_agent_state_dir }}\\agent-state.json"
+  register: commando_windows_agent_enrollment
+  retries: 15
+  delay: 2
+  until: commando_windows_agent_enrollment.stat.exists
+  when: not ansible_check_mode
+

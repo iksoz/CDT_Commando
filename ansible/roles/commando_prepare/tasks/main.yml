@@ -1,0 +1,127 @@
+---
+- name: Validate inventory structure and event settings
+  ansible.builtin.assert:
+    that:
+      - groups.get('commando_servers', []) | length == 1
+      - commando_agent_inventory_hosts | length > 0
+      - commando_event_starts_utc is defined
+      - commando_event_expires_utc is defined
+      - commando_event_starts_utc is match('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$')
+      - commando_event_expires_utc is match('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$')
+      - commando_event_expires_utc > commando_event_starts_utc
+      - commando_effective_deployment_id is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+      - commando_allowed_targets | length == commando_agent_inventory_hosts | length
+      - commando_server_endpoint != 'CHANGE-ME-TO-OPENSTACK-IP-OR-DNS'
+    fail_msg: >-
+      Inventory must define exactly one commando_servers host, at least one agent,
+      a real OpenStack controller address, a safe deployment ID, unique IPv4
+      agent addresses, and valid UTC event times.
+
+- name: Validate inventory agent names
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].commando_agent_name is defined
+      - hostvars[item].commando_agent_name | length > 0
+    fail_msg: "Inventory host {{ item }} requires commando_agent_name."
+  loop: "{{ commando_agent_inventory_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Create protected generated-material directory
+  ansible.builtin.file:
+    path: "{{ commando_generated_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Materialize persistent deployment secrets
+  ansible.builtin.set_fact:
+    commando_prepared_operator_key: "{{ commando_operator_key }}"
+    commando_prepared_enrollment_key: "{{ commando_enrollment_key }}"
+    commando_prepared_pfx_password: "{{ commando_tls_pfx_password }}"
+  no_log: true
+
+- name: Protect generated secret files
+  ansible.builtin.file:
+    path: "{{ commando_generated_dir }}/{{ item }}"
+    state: file
+    mode: '0600'
+  loop:
+    - operator-key
+    - enrollment-key
+    - pfx-password
+
+- name: Generate deployment CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ commando_generated_dir }}/ca.key"
+    size: 3072
+    mode: '0600'
+
+- name: Generate deployment CA certificate request
+  community.crypto.openssl_csr:
+    path: "{{ commando_generated_dir }}/ca.csr"
+    privatekey_path: "{{ commando_generated_dir }}/ca.key"
+    common_name: "Commando {{ commando_effective_deployment_id }} CA"
+    basic_constraints:
+      - CA:TRUE
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+    mode: '0600'
+
+- name: Generate deployment CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ commando_generated_dir }}/ca.crt"
+    privatekey_path: "{{ commando_generated_dir }}/ca.key"
+    csr_path: "{{ commando_generated_dir }}/ca.csr"
+    provider: selfsigned
+    selfsigned_not_after: +3650d
+    mode: '0644'
+
+- name: Generate server private key
+  community.crypto.openssl_privatekey:
+    path: "{{ commando_generated_dir }}/server.key"
+    size: 3072
+    mode: '0600'
+
+- name: Generate server certificate request
+  community.crypto.openssl_csr:
+    path: "{{ commando_generated_dir }}/server.csr"
+    privatekey_path: "{{ commando_generated_dir }}/server.key"
+    common_name: "{{ commando_server_endpoint }}"
+    subject_alt_name: "{{ commando_server_certificate_names | commando_subject_alt_names }}"
+    use_common_name_for_san: false
+    basic_constraints:
+      - CA:FALSE
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+    mode: '0600'
+
+- name: Sign server certificate with deployment CA
+  community.crypto.x509_certificate:
+    path: "{{ commando_generated_dir }}/server.crt"
+    csr_path: "{{ commando_generated_dir }}/server.csr"
+    provider: ownca
+    ownca_path: "{{ commando_generated_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ commando_generated_dir }}/ca.key"
+    ownca_not_after: +825d
+    mode: '0644'
+
+- name: Package server certificate for Kestrel
+  community.crypto.openssl_pkcs12:
+    action: export
+    path: "{{ commando_tls_pfx_source }}"
+    friendly_name: Commando Server
+    privatekey_path: "{{ commando_generated_dir }}/server.key"
+    certificate_path: "{{ commando_generated_dir }}/server.crt"
+    other_certificates:
+      - "{{ commando_generated_dir }}/ca.crt"
+    passphrase: "{{ commando_tls_pfx_password }}"
+    state: present
+    mode: '0600'
+  no_log: true
+

@@ -61,9 +61,9 @@ dotnet build .\src\Commando.Agent\Commando.Agent.csproj
 Release builds:
 
 ```powershell
-dotnet publish .\src\Commando.Server\Commando.Server.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\release\server-win-x64
-dotnet publish .\src\Commando.Agent\Commando.Agent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\release\agent-win-x64
-dotnet publish .\src\Commando.Agent\Commando.Agent.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\release\agent-linux-x64
+dotnet publish .\src\Commando.Server\Commando.Server.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o .\artifacts\release\server-win-x64
+dotnet publish .\src\Commando.Agent\Commando.Agent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o .\artifacts\release\agent-win-x64
+dotnet publish .\src\Commando.Agent\Commando.Agent.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o .\artifacts\release\agent-linux-x64
 ```
 
 The resulting executables are `artifacts/release/server-win-x64/Commando.Server.exe`, `artifacts/release/agent-win-x64/Commando.Agent.exe`, and `artifacts/release/agent-linux-x64/Commando.Agent`. The agent publish directories also contain example configuration files. Publishing is not the same as configuring or installing agents on event hosts.
@@ -122,6 +122,26 @@ The dashboard's **Emergency stop all** action requires the exact confirmation `S
 Emergency stop is intentionally one-way for an event state. To begin a new event, archive the prior data directory for audit purposes and configure a fresh `Commando__DataDirectory`.
 
 ## Competition deployment
+
+A self-contained Ansible deployment for a Windows server plus Windows and Linux
+agents is available in [`ansible/`](ansible/README.md). It needs only an inventory
+file: bundled artifacts, runtime dependencies, secret generation, TLS generation,
+event policy, per-host enrollment keys, boot startup, and checks are handled by
+the deployment.
+
+For the Bravo OpenStack workflow, connect to `linux-server-1` through Tailscale
+and run Ansible there. It installs the native Windows server and dashboard on
+`win-server-1` and the agents on the packet hosts:
+
+```bash
+bash ansible/deploy.sh --ask-vault-pass --ask-become-pass
+```
+
+`Deploy-Commando.ps1` remains available as a WSL-based fallback when deployment
+must be launched from a different Red Team Windows workstation.
+
+The Ansible path above automatically performs the configuration described below.
+The following steps are retained only for a manual deployment without Ansible.
 
 1. Copy `config/commando-alpha-policy.example.json` to a private event file. Set the exact competition start/end times and verify every host name, address, and service ID. The example dates are illustrative.
 2. Set `COMMANDO_POLICY_FILE` to that file's absolute path. Keep `requireSourceIp: true` when agent traffic reaches the server directly. If a gateway changes the source IP, set it to `false` and distribute only the unique derived key for each named host. Never distribute the master `COMMANDO_ENROLLMENT_KEY` to an agent.

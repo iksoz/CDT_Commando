@@ -1,0 +1,30 @@
+---
+# Server address, URL, TLS names, and exact agent scope are derived from inventory.
+commando_server_inventory_host: "{{ groups.get('commando_servers', []) | first }}"
+commando_server_address: "{{ hostvars[commando_server_inventory_host].commando_host_address | default(hostvars[commando_server_inventory_host].ansible_host | default(commando_server_inventory_host)) }}"
+commando_server_endpoint: "{{ hostvars[commando_server_inventory_host].commando_public_host | default(commando_server_address) }}"
+commando_effective_server_port: "{{ hostvars[commando_server_inventory_host].commando_server_port | default(443) }}"
+commando_server_url: "https://{{ commando_server_endpoint }}:{{ commando_effective_server_port }}"
+commando_server_certificate_names:
+  - "{{ commando_server_endpoint }}"
+  - "{{ commando_server_address }}"
+  - "{{ commando_server_inventory_host }}"
+commando_agent_inventory_hosts: "{{ groups.get('linux_agents', []) + groups.get('windows_agents', []) }}"
+commando_allowed_targets: "{{ commando_agent_inventory_hosts | commando_host_addresses(hostvars) }}"
+commando_allowed_networks: "{{ commando_agent_inventory_hosts | commando_host_networks(hostvars) }}"
+
+# Bundled controller-side artifacts.
+commando_server_artifact_dir: "{{ playbook_dir }}/../artifacts/release/server-win-x64"
+commando_linux_agent_artifact: "{{ playbook_dir }}/../artifacts/release/agent-linux-x64/Commando.Agent"
+commando_windows_agent_artifact: "{{ playbook_dir }}/../artifacts/release/agent-win-x64/Commando.Agent.exe"
+
+# Secrets and a private deployment CA are generated once and persisted locally.
+commando_effective_deployment_id: "{{ commando_deployment_id | default('default') }}"
+commando_generated_dir: "{{ playbook_dir }}/.generated/{{ commando_effective_deployment_id }}"
+commando_tls_pfx_source: "{{ commando_generated_dir }}/server.pfx"
+commando_tls_ca_source: "{{ commando_generated_dir }}/ca.crt"
+commando_operator_key: "{{ lookup('ansible.builtin.password', commando_generated_dir + '/operator-key', length=48, chars=['ascii_letters', 'digits']) }}"
+commando_enrollment_key: "{{ lookup('ansible.builtin.password', commando_generated_dir + '/enrollment-key', length=48, chars=['ascii_letters', 'digits']) }}"
+commando_tls_pfx_password: "{{ lookup('ansible.builtin.password', commando_generated_dir + '/pfx-password', length=48, chars=['ascii_letters', 'digits']) }}"
+
+

@@ -1,0 +1,21 @@
+{
+  "startsUtc": {{ commando_event_starts_utc | to_json }},
+  "expiresUtc": {{ commando_event_expires_utc | to_json }},
+  "requireSourceIp": {{ commando_require_source_ip | default(true) | bool | to_json }},
+  "allowedNetworks": {{ commando_allowed_networks | to_json }},
+  "hosts": [
+{% set agent_hosts = groups.get('linux_agents', []) + groups.get('windows_agents', []) %}
+{% for inventory_name in agent_hosts %}
+{% set agent = hostvars[inventory_name] %}
+    {
+      "name": {{ (agent.commando_agent_name | default(inventory_name)) | to_json }},
+      "hostname": {{ (agent.commando_agent_hostname | default(agent.commando_agent_name | default(inventory_name))) | to_json }},
+      "address": {{ (agent.commando_host_address | default(agent.ansible_host | default(inventory_name))) | to_json }},
+      "osFamily": {{ ('Linux' if inventory_name in groups.get('linux_agents', []) else 'Windows') | to_json }},
+      "allowedServiceIds": {{ (agent.commando_services | default([]) | map(attribute='id') | list) | to_json }},
+      "allowUnrestrictedPowerShell": {{ (agent.commando_allow_unrestricted_powershell | default(false)) | bool | to_json }}
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
+  ]
+}
+

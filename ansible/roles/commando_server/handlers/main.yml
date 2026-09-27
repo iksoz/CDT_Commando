@@ -1,0 +1,17 @@
+---
+- name: Restart Commando server
+  ansible.windows.win_powershell:
+    parameters:
+      TaskName: "{{ commando_server_task_name }}"
+      ExecutablePath: "{{ commando_server_install_dir }}\\Commando.Server.exe"
+    script: |
+      param(
+        [string]$TaskName,
+        [string]$ExecutablePath
+      )
+      Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+      Get-CimInstance Win32_Process | Where-Object ExecutablePath -EQ $ExecutablePath |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+      Start-ScheduledTask -TaskName $TaskName
+  changed_when: true
+

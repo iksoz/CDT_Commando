@@ -1,0 +1,185 @@
+---
+all:
+  vars:
+    # These are the only environment values normally changed before deployment.
+    commando_deployment_id: competition-one-2026
+    commando_competition_name: Competition One
+    # win-server-1 from Bravo-CDT/Infrastructure.
+    commando_controller_address: 10.110.30.21
+    commando_controller_ansible_user: Administrator
+    commando_windows_ansible_user: Administrator
+    commando_linux_ansible_user: root
+
+    # Confirm the official UTC event window with Grey Team.
+    commando_event_starts_utc: "2026-09-28T12:00:00Z"
+    commando_event_expires_utc: "2026-09-28T20:00:00Z"
+
+    # The packet specifies a direct network bridge, so source IP checks remain on.
+    commando_require_source_ip: true
+    commando_server_port: 443
+
+  children:
+    commando_servers:
+      vars:
+        ansible_user: "{{ commando_controller_ansible_user }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+        # The OpenStack NIC may use the Windows Public network profile. Restrict
+        # actual reachability with the OpenStack security group.
+        commando_server_firewall_profiles:
+          - domain
+          - private
+          - public
+      hosts:
+        red-commando-controller:
+          ansible_host: "{{ commando_controller_address }}"
+          commando_public_host: "{{ commando_controller_address }}"
+
+    linux_agents:
+      vars:
+        ansible_user: "{{ commando_linux_ansible_user }}"
+      hosts:
+        geonosis:
+          ansible_host: 10.110.10.11
+          commando_agent_name: Geonosis
+          commando_services:
+            - id: apache
+              service_name: apache2
+              tcp_port: 80
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - /etc/apache2
+            - /var/www
+            - /var/log
+
+        mandalore:
+          ansible_host: 10.110.10.12
+          commando_agent_name: Mandalore
+          commando_services:
+            - id: ssh
+              service_name: ssh
+              tcp_port: 22
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - /etc/ssh
+            - /var/log
+
+        kashyyyk:
+          ansible_host: 10.110.10.13
+          commando_agent_name: Kashyyyk
+          commando_services:
+            - id: mariadb
+              service_name: mariadb
+              tcp_port: 3306
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - /etc/mysql
+            - /var/lib/mysql
+            - /var/log
+
+        utapau:
+          ansible_host: 10.110.10.14
+          commando_agent_name: Utapau
+          # The packet says FTP; verify that the installed unit is vsftpd.
+          commando_services:
+            - id: ftp
+              service_name: vsftpd
+              tcp_port: 21
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - /etc/vsftpd.conf
+            - /var/log
+
+        mustafar:
+          ansible_host: 10.110.10.15
+          commando_agent_name: Mustafar
+          # The packet says SMTP; verify that the installed unit is postfix.
+          commando_services:
+            - id: smtp
+              service_name: postfix
+              tcp_port: 25
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - /etc/postfix
+            - /var/log
+
+    windows_agents:
+      vars:
+        ansible_user: "{{ commando_windows_ansible_user }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      hosts:
+        coruscant:
+          ansible_host: 10.110.20.11
+          commando_agent_name: Coruscant
+          commando_allow_unrestricted_powershell: false
+          commando_services:
+            - id: active-directory
+              service_name: NTDS
+              tcp_port: 389
+              allow_pause: false
+            - id: dns
+              service_name: DNS
+              tcp_port: 53
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - 'C:\Windows\NTDS'
+            - 'C:\Windows\System32\dns'
+            - 'C:\Windows\System32\winevt\Logs'
+
+        naboo:
+          ansible_host: 10.110.20.12
+          commando_agent_name: Naboo
+          commando_allow_unrestricted_powershell: false
+          commando_services:
+            - id: iis
+              service_name: W3SVC
+              tcp_port: 80
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - 'C:\inetpub\wwwroot'
+            - 'C:\Windows\System32\inetsrv\config'
+            - 'C:\Windows\System32\winevt\Logs'
+
+        kamino:
+          ansible_host: 10.110.20.13
+          commando_agent_name: Kamino
+          commando_allow_unrestricted_powershell: false
+          commando_services:
+            - id: certificate-authority
+              service_name: CertSvc
+              tcp_port: 0
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - 'C:\Windows\System32\CertLog'
+            - 'C:\Windows\System32\CertSrv'
+            - 'C:\Windows\System32\winevt\Logs'
+
+        felucia:
+          ansible_host: 10.110.20.14
+          commando_agent_name: Felucia
+          commando_allow_unrestricted_powershell: false
+          commando_services:
+            - id: smb
+              service_name: LanmanServer
+              tcp_port: 445
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - 'C:\Shares'
+            - 'C:\Windows\System32\winevt\Logs'
+
+        alderaan:
+          ansible_host: 10.110.20.15
+          commando_agent_name: Alderaan
+          commando_allow_unrestricted_powershell: false
+          # The packet says MSSQL; verify this is the default instance service.
+          commando_services:
+            - id: mssql
+              service_name: MSSQLSERVER
+              tcp_port: 1433
+              allow_pause: false
+          commando_allowed_hash_roots:
+            - 'C:\Program Files\Microsoft SQL Server'
+            - 'C:\Windows\System32\winevt\Logs'

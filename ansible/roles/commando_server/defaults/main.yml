@@ -1,0 +1,18 @@
+---
+commando_server_install_dir: 'C:\Program Files\Commando\Server'
+commando_server_data_dir: 'C:\ProgramData\Commando\Server\data'
+commando_server_config_dir: 'C:\ProgramData\Commando\Server\config'
+commando_server_log_dir: 'C:\ProgramData\Commando\Server\logs'
+commando_server_task_name: Commando Server
+commando_server_port: 443
+commando_server_task_lifetime_minutes: 10
+commando_server_max_output_bytes: 262144
+commando_server_open_firewall: true
+commando_server_firewall_profiles:
+  - domain
+  - private
+commando_server_healthcheck_retries: 15
+commando_server_healthcheck_delay: 2
+commando_server_validate_healthcheck_certificate: false
+commando_windows_powershell_path: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+

@@ -1,0 +1,16 @@
+$ErrorActionPreference = 'Stop'
+$env:COMMANDO_POLICY_FILE = {{ (commando_server_config_dir + '\\event-policy.json') | to_json }}
+$env:COMMANDO_OPERATOR_KEY = {{ commando_operator_key | to_json }}
+$env:COMMANDO_ENROLLMENT_KEY = {{ commando_enrollment_key | to_json }}
+$env:Commando__CompetitionName = {{ (commando_competition_name | default('Commando Competition')) | to_json }}
+$env:Commando__DataDirectory = {{ commando_server_data_dir | to_json }}
+$env:Commando__TaskLifetimeMinutes = {{ commando_server_task_lifetime_minutes | string | to_json }}
+$env:Commando__MaxOutputBytes = {{ commando_server_max_output_bytes | string | to_json }}
+$env:ASPNETCORE_URLS = {{ ('https://0.0.0.0:' + (commando_server_port | string)) | to_json }}
+$env:ASPNETCORE_Kestrel__Certificates__Default__Path = {{ (commando_server_config_dir + '\\server.pfx') | to_json }}
+$env:ASPNETCORE_Kestrel__Certificates__Default__Password = {{ commando_tls_pfx_password | to_json }}
+
+$logPath = {{ (commando_server_log_dir + '\\server.log') | to_json }}
+& {{ (commando_server_install_dir + '\\Commando.Server.exe') | to_json }} *>> $logPath
+exit $LASTEXITCODE
+

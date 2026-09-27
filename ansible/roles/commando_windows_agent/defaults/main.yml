@@ -1,0 +1,23 @@
+---
+commando_windows_agent_install_dir: 'C:\Program Files\Commando\Agent'
+commando_windows_agent_config_dir: 'C:\ProgramData\Commando\Agent\config'
+commando_windows_agent_state_dir: 'C:\ProgramData\Commando\Agent\state'
+commando_windows_agent_log_dir: 'C:\ProgramData\Commando\Agent\logs'
+commando_windows_agent_task_name: Commando Agent
+commando_allow_unrestricted_powershell: false
+commando_services: []
+commando_allowed_hash_roots: []
+commando_tls_ca_source: ''
+commando_windows_powershell_path: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+commando_poll_seconds: 5
+commando_task_timeout_seconds: 90
+commando_max_powershell_output_bytes: 131072
+commando_enabled_powershell_commands:
+  - Get-ComputerInfo
+  - Get-Process
+  - Get-Service
+  - Get-HotFix
+  - Get-NetTCPConnection
+  - Test-Connection
+commando_allowed_cidrs: []
+
